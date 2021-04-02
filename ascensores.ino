@@ -24,11 +24,17 @@ const int motorPuertasA1 = 11;	    // pin de velocidad de motor de Puertas A1
 const int motorCabinaA1 = 13;		// pin de velocidad de motor de cabina A1
 const int motorPuertasA2 = 10;	    // pin de velocidad de motor de Puertas A2
 const int motorCabinaA2 = 12;		// pin de velocidad de motor de cabina A2
-// 4 Salidas al Decodificador/Demultiplexor 74138
+// 10 Salidas a Decodificadores 74138
 const int decoEnable = 0;              // Habilitar decodificador
-const int decoInC = 14;              // pin C del Decodificador/Demultiplexor
-const int decoInB = 15;              // pin B del Decodificador/Demultiplexor
-const int decoInA = 16;              // pin A del Decodificador/Demultiplexor
+const int decoMotoresC = 14;              // pin C del Decodificador de motores
+const int decoMotoresB = 15;              // pin B del Decodificador de motores
+const int decoMotoresA = 16;              // pin A del Decodificador de motores
+const int decoA1C = 7;              // pin C del Decodificador de visualizador A1
+const int decoA1B = 6;              // pin B del Decodificador de visualizador A1
+const int decoA1A = 5;              // pin A del Decodificador de visualizador A1
+const int decoA2C = 4;              // pin C del Decodificador de visualizador A2
+const int decoA2B = 3;              // pin B del Decodificador de visualizador A2
+const int decoA2A = 2;              // pin A del Decodificador de visualizador A2
 // 22 Botones Internos/Externos (Matriz de botones 6x4)
 const int fila1Botones = 60;         //  PHBa, P4Su, P4Ba, P3Su 
 const int fila2Botones = 61;         //  P3Ba, P2Su, P2Ba, P1Su
@@ -76,6 +82,8 @@ unsigned long tiempoEsperaA2;   // tiempo de espera para cerrar puertas A2
 int llamadoExt;
 int pisoA1;
 int pisoA2;
+int pisoActA1;
+int pisoActA2;
 // Arrays para sensores
 byte sensoresPisosA1[] = {sensorPBA1, sensorP1A1, sensorP2A1, sensorP3A1, sensorP4A1, sensorPHA1};
 byte sensoresPuertasA1[] = {sensorCierreA1, sensorAperturaA1, sensorObstA1};
@@ -84,7 +92,7 @@ byte sensoresPuertasA2[] = {sensorCierreA2, sensorAperturaA2, sensorObstA2};
 const int cuentaSenPisos = sizeof(sensoresPisosA1);
 const int cuentaSenPuertas = sizeof(sensoresPuertasA1);
 // Array para motores
-byte pinesMotores[] = {motorPuertasA1, motorPuertasA2, motorCabinaA1, motorCabinaA2, decoInC, decoInB, decoInA};
+byte pinesMotores[] = {motorPuertasA1, motorPuertasA2, motorCabinaA1, motorCabinaA2, decoMotoresC, decoMotoresB, decoMotoresA};
 const int cuentaPinMotor = sizeof(pinesMotores);
 // Arrays para matriz 6x4 de botones
 byte filBotones[] = {fila1Botones, fila2Botones, fila3Botones, fila4Botones, fila5Botones, fila6Botones};
@@ -102,6 +110,10 @@ byte ledsInternos[] = {ledPBA1, ledP1A1, ledP2A1, ledP3A1, ledP4A1, ledPHA1, led
 byte ledsInternosA1[] = {ledPBA1, ledP1A1, ledP2A1, ledP3A1, ledP4A1, ledPHA1};
 byte ledsInternosA2[] = {ledPBA2, ledP1A2, ledP2A2, ledP3A2, ledP4A2, ledPHA2};
 const int cuentaLedInt = sizeof(ledsInternos);
+const int cuentaLed = sizeof(ledsInternosA1);
+// Array para visualizadores
+byte visualizadores[] = {decoA1C, decoA1B, decoA1A, decoA2C, decoA2B, decoA2A};
+const int cuentaVisualizadores = sizeof(visualizadores);
 
 void setup() {  // estableciendo entradas y salidas
     pinMode(decoEnable, OUTPUT);    // Pin del Enable como salida
@@ -121,6 +133,9 @@ void setup() {  // estableciendo entradas y salidas
     for (int x = 0; x < cuentaPinMotor; x++) {  // Pines de motores como salidas
         pinMode(pinesMotores[x], OUTPUT);
     }
+    for (int x = 0; x < cuentaVisualizadores; x++) { // Pines de visualizadores A1 y A2 como salidas
+        pinMode(visualizadores[x], OUTPUT);
+    }
     for (int x = 0; x < cuentaFilTot; x++) {    // Filas de matriz de botones como entrada
         pinMode(filBotones[x], INPUT);
     }
@@ -136,6 +151,15 @@ void setup() {  // estableciendo entradas y salidas
 }
 
 void loop() {   // bucle
+    prevencion();
+    puertas();
+    botonesExternos();
+    movimientoExt();
+    botonesInternos();
+    movimientoInt();
+}
+
+void prevencion() {
     if (inicio) {     // si el controlador se acaba de iniciar
         delay(5000);    // delay de inicio
         digitalWrite(decoEnable, LOW);  // Se habilita el decodificador
@@ -143,6 +167,9 @@ void loop() {   // bucle
         prevencionA2();
         inicio = false;
     }
+}
+
+void puertas() {
     if ((millis() - tiempoEsperaA1) >= 10000) {     // espera 10 seg con las puertas abiertas de A1
         cerrarPuertasA1();
         tiempoEsperaA1 = millis();
@@ -151,9 +178,6 @@ void loop() {   // bucle
         cerrarPuertasA2();
         tiempoEsperaA2 = millis();
     }
-    botonesExternos();
-    movimiento();
-    botonesInternos();
 }
 
 void prevencionA1() {
@@ -193,9 +217,9 @@ void prevencionA2() {
 }
 
 void cerrarPuertasA1() {
-    digitalWrite(decoInC, HIGH);    // direccion derecha para cerrar
-    digitalWrite(decoInB, LOW);
-    digitalWrite(decoInA, HIGH);
+    digitalWrite(decoMotoresC, HIGH);    // direccion derecha para cerrar
+    digitalWrite(decoMotoresB, LOW);
+    digitalWrite(decoMotoresA, HIGH);
     while (digitalRead(sensorCierreA1)) {   // si las puertas no estan cerradas
         analogWrite(motorPuertasA1, velocidadPuertas);  // cierra puertas
         verificarPuertasA1();
@@ -204,9 +228,9 @@ void cerrarPuertasA1() {
 }
 
 void cerrarPuertasA2() {
-    digitalWrite(decoInC, HIGH);    // direccion derecha para cerrar
-    digitalWrite(decoInB, HIGH);
-    digitalWrite(decoInA, HIGH);
+    digitalWrite(decoMotoresC, HIGH);    // direccion derecha para cerrar
+    digitalWrite(decoMotoresB, HIGH);
+    digitalWrite(decoMotoresA, HIGH);
     while (digitalRead(sensorCierreA2)) {  // si las puertas no estan cerradas
         analogWrite(motorPuertasA2, velocidadPuertas);  // cierra puertas
         verificarPuertasA2();
@@ -215,23 +239,23 @@ void cerrarPuertasA2() {
 }
 
 void verificarPuertasA1() {
-    if (!digitalRead(sensorObstA1) || !digitalRead(botonPararA1)) {   // si hay un obstáculo
+    while (!digitalRead(sensorObstA1) || !digitalRead(botonPararA1)) {   // si hay un obstáculo
         analogWrite(motorPuertasA1, 0); // detiene puertas
         abrirPuertasA1();
     }
 }
 
 void verificarPuertasA2() {
-    if (!digitalRead(sensorObstA2) || !digitalRead(botonPararA2)) {   // si hay un obstáculo
+    while (!digitalRead(sensorObstA2) || !digitalRead(botonPararA2)) {   // si hay un obstáculo
         analogWrite(motorPuertasA2, 0); // detiene puertas
         abrirPuertasA2();
     }
 }
 
 void abrirPuertasA1() {
-    digitalWrite(decoInC, HIGH);    // dirección izquierda para abrir
-    digitalWrite(decoInB, LOW);
-    digitalWrite(decoInA, LOW);
+    digitalWrite(decoMotoresC, HIGH);    // dirección izquierda para abrir
+    digitalWrite(decoMotoresB, LOW);
+    digitalWrite(decoMotoresA, LOW);
     while (digitalRead(sensorAperturaA1)) {    // entra en bucle hasta abrir las puertas
         analogWrite(motorPuertasA1, velocidadPuertas);  // abre puertas
     } 
@@ -240,9 +264,9 @@ void abrirPuertasA1() {
 }
 
 void abrirPuertasA2() {
-    digitalWrite(decoInC, HIGH);    // dirección izquierda para abrir
-    digitalWrite(decoInB, HIGH);
-    digitalWrite(decoInA, LOW);
+    digitalWrite(decoMotoresC, HIGH);    // dirección izquierda para abrir
+    digitalWrite(decoMotoresB, HIGH);
+    digitalWrite(decoMotoresA, LOW);
     while (digitalRead(sensorAperturaA2)) {    // entra en bucle hasta abrir las puertas
         analogWrite(motorPuertasA2, velocidadPuertas);  // abre puertas
     }
@@ -251,27 +275,27 @@ void abrirPuertasA2() {
 }
 
 void bajandoA1() {
-    digitalWrite(decoInC, LOW); // direccion derecha para bajar A1
-    digitalWrite(decoInB, LOW);
-    digitalWrite(decoInA, HIGH);
+    digitalWrite(decoMotoresC, LOW); // direccion derecha para bajar A1
+    digitalWrite(decoMotoresB, LOW);
+    digitalWrite(decoMotoresA, HIGH);
 }
 
 void subiendoA1() {
-    digitalWrite(decoInC, LOW); // direccion izquierda para subir A1
-    digitalWrite(decoInB, LOW);
-    digitalWrite(decoInA, LOW);
+    digitalWrite(decoMotoresC, LOW); // direccion izquierda para subir A1
+    digitalWrite(decoMotoresB, LOW);
+    digitalWrite(decoMotoresA, LOW);
 }
 
 void bajandoA2() {
-    digitalWrite(decoInC, LOW); // direccion derecha para bajar A2
-    digitalWrite(decoInB, HIGH);
-    digitalWrite(decoInA, HIGH);
+    digitalWrite(decoMotoresC, LOW); // direccion derecha para bajar A2
+    digitalWrite(decoMotoresB, HIGH);
+    digitalWrite(decoMotoresA, HIGH);
 }
 
 void subiendoA2() {
-    digitalWrite(decoInC, LOW); // direccion izquierda para subir A2
-    digitalWrite(decoInB, HIGH);
-    digitalWrite(decoInA, LOW);
+    digitalWrite(decoMotoresC, LOW); // direccion izquierda para subir A2
+    digitalWrite(decoMotoresB, HIGH);
+    digitalWrite(decoMotoresA, LOW);
 }
 
 void botonesExternos() {
@@ -290,44 +314,9 @@ void botonesExternos() {
 }
 
 void botonExtPresionado(int col, int fila) {
-    if (fila == fila1Botones && col == columna1Botones) {
-        llamadoExt = 5;
-        int ledPresionado = 9;
-        llamadoExterno(ledPresionado);
-    }
-    if (fila == fila1Botones && col == columna2Botones) {
-        llamadoExt = 4;
-        int ledPresionado = 8;
-        llamadoExterno(ledPresionado);
-    }
-    if (fila == fila1Botones && col == columna3Botones) {
-        llamadoExt = 4;
-        int ledPresionado = 7;
-        llamadoExterno(ledPresionado);
-    }
-    if (fila == fila1Botones && col == columna4Botones) {
-        llamadoExt = 3;
-        int ledPresionado = 6;
-        llamadoExterno(ledPresionado);
-    }
-    if (fila == fila2Botones && col == columna1Botones) {
-        llamadoExt = 3;
-        int ledPresionado = 5;
-        llamadoExterno(ledPresionado);
-    }
-    if (fila == fila2Botones && col == columna2Botones) {
-        llamadoExt = 2;
-        int ledPresionado = 4;
-        llamadoExterno(ledPresionado);
-    }
-    if (fila == fila2Botones && col == columna3Botones) {
-        llamadoExt = 2;
-        int ledPresionado = 3;
-        llamadoExterno(ledPresionado);
-    }
-    if (fila == fila2Botones && col == columna4Botones) {
-        llamadoExt = 1;
-        int ledPresionado = 2;
+    if (fila == fila3Botones && col == columna2Botones) {
+        llamadoExt = 0;
+        int ledPresionado = 0;
         llamadoExterno(ledPresionado);
     }
     if (fila == fila3Botones && col == columna1Botones) {
@@ -335,9 +324,44 @@ void botonExtPresionado(int col, int fila) {
         int ledPresionado = 1;
         llamadoExterno(ledPresionado);
     }
-    if (fila == fila3Botones && col == columna2Botones) {
-        llamadoExt = 0;
-        int ledPresionado = 0;
+    if (fila == fila2Botones && col == columna4Botones) {
+        llamadoExt = 1;
+        int ledPresionado = 2;
+        llamadoExterno(ledPresionado);
+    }
+    if (fila == fila2Botones && col == columna3Botones) {
+        llamadoExt = 2;
+        int ledPresionado = 3;
+        llamadoExterno(ledPresionado);
+    }
+    if (fila == fila2Botones && col == columna2Botones) {
+        llamadoExt = 2;
+        int ledPresionado = 4;
+        llamadoExterno(ledPresionado);
+    }
+    if (fila == fila2Botones && col == columna1Botones) {
+        llamadoExt = 3;
+        int ledPresionado = 5;
+        llamadoExterno(ledPresionado);
+    }
+    if (fila == fila1Botones && col == columna4Botones) {
+        llamadoExt = 3;
+        int ledPresionado = 6;
+        llamadoExterno(ledPresionado);
+    }
+    if (fila == fila1Botones && col == columna3Botones) {
+        llamadoExt = 4;
+        int ledPresionado = 7;
+        llamadoExterno(ledPresionado);
+    }
+    if (fila == fila1Botones && col == columna2Botones) {
+        llamadoExt = 4;
+        int ledPresionado = 8;
+        llamadoExterno(ledPresionado);
+    }
+    if (fila == fila1Botones && col == columna1Botones) {
+        llamadoExt = 5;
+        int ledPresionado = 9;
         llamadoExterno(ledPresionado);
     }
 }
@@ -355,7 +379,7 @@ void llamadoExterno(int ledPresionado) {
     }
 }
 
-void movimiento() {
+void movimientoExt() {
     for (int ledLeido = 0; ledLeido < cuentaLedExt; ledLeido++) { // Bucle for para leer cada led
         byte led = ledsExternos[ledLeido];
         if (digitalRead(led)) {  // Si hay led encendido
@@ -380,9 +404,11 @@ void movimiento() {
                 difA2 = difA2*-1;
             }
             if (difA1 <= difA2) {
+                cerrarPuertasA1();
                 mueveA1();
                 digitalWrite(led, LOW); // Al terminar de mover apaga el led
             } else if (difA1 > difA2) {
+                cerrarPuertasA2()
                 mueveA2();
                 digitalWrite(led, LOW); // Al terminar de mover apaga el led
             }
@@ -447,62 +473,219 @@ void botonesInternos() {
 }
 
 void botonIntPresionado(int col, int fila) {
-    if (fila == fila4Botones && col == columna1Botones) {
+    if (fila == fila6Botones && col == columna2Botones) {
         int ledPresionado = 0;
-        llamadoInternoA1(ledPresionado);
-    }
-    if (fila == fila4Botones && col == columna2Botones) {
-        int ledPresionado = 1;
-        llamadoInternoA1(ledPresionado);
-    }
-    if (fila == fila5Botones && col == columna1Botones) {
-        int ledPresionado = 2;
-        llamadoInternoA1(ledPresionado);
-    }
-    if (fila == fila5Botones && col == columna2Botones) {
-        int ledPresionado = 3;
         llamadoInternoA1(ledPresionado);
     }
     if (fila == fila6Botones && col == columna1Botones) {
+        int ledPresionado = 1;
+        llamadoInternoA1(ledPresionado);
+    }
+    if (fila == fila5Botones && col == columna2Botones) {
+        int ledPresionado = 2;
+        llamadoInternoA1(ledPresionado);
+    }
+    if (fila == fila5Botones && col == columna1Botones) {
+        int ledPresionado = 3;
+        llamadoInternoA1(ledPresionado);
+    }
+    if (fila == fila4Botones && col == columna2Botones) {
         int ledPresionado = 4;
         llamadoInternoA1(ledPresionado);
     }
-    if (fila == fila6Botones && col == columna2Botones) {
+    if (fila == fila4Botones && col == columna1Botones) {
         int ledPresionado = 5;
         llamadoInternoA1(ledPresionado);
     }
-    if (fila == fila4Botones && col == columna3Botones) {
+    if (fila == fila6Botones && col == columna4Botones) {
         int ledPresionado = 0;
         llamadoInternoA2(ledPresionado);
     }
-    if (fila == fila4Botones && col == columna4Botones) {
+    if (fila == fila6Botones && col == columna3Botones) {
         int ledPresionado = 1;
         llamadoInternoA2(ledPresionado);
     }
-    if (fila == fila5Botones && col == columna3Botones) {
+    if (fila == fila5Botones && col == columna4Botones) {
         int ledPresionado = 2;
         llamadoInternoA2(ledPresionado);
     }
-    if (fila == fila5Botones && col == columna4Botones) {
+    if (fila == fila5Botones && col == columna3Botones) {
         int ledPresionado = 3;
         llamadoInternoA2(ledPresionado);
     }
-    if (fila == fila6Botones && col == columna3Botones) {
+    if (fila == fila4Botones && col == columna4Botones) {
         int ledPresionado = 4;
         llamadoInternoA2(ledPresionado);
     }
-    if (fila == fila6Botones && col == columna4Botones) {
+    if (fila == fila4Botones && col == columna3Botones) {
         int ledPresionado = 5;
         llamadoInternoA2(ledPresionado);
     }
 }
 
 void llamadoInternoA1(int ledPresionado) {
+    byte pisoElegido = sensoresPisosA1[ledPresionado];
     byte led = ledsInternosA1[ledPresionado];
-    digitalWrite(led, HIGH);
+    if (!digitalRead(pisoElegido)) {
+        digitalWrite(led, HIGH);
+        delay(1000);
+        digitalWrite(led, LOW);
+    } else {
+        digitalWrite(led, HIGH);
+    }
 }
 
 void llamadoInternoA2(int ledPresionado) {
+    byte pisoElegido = sensoresPisosA2[ledPresionado];
     byte led = ledsInternosA2[ledPresionado];
-    digitalWrite(led, HIGH);
+    if (!digitalRead(pisoElegido)) {
+        digitalWrite(led, HIGH);
+        delay(1000);
+        digitalWrite(led, LOW);
+    } else {
+        digitalWrite(led, HIGH);
+    }
+}
+
+void movimientoInt() {
+    for (int ledLeido = 0; ledLeido < cuentaLed; ledLeido++) { // Bucle for para leer cada led
+        byte led = ledsInternosA1[ledLeido];
+        if (digitalRead(led)) {  // Si hay led encendido
+            for (pisoA1 = 0; pisoA1 < cuentaSenPisos; pisoA1++) {
+                byte piso = sensoresPisosA1[pisoA1];    
+                if (!digitalRead(piso)) {   // Lee dónde está el ascensor
+                    break;  // Si encuentra el piso del ascensor sale del bucle for
+                }
+            }
+            cerrarPuertasA1();
+            if (ledLeido > pisoA1) {
+                bajandoA1();
+                byte pisoElegido = sensoresPisosA1[ledLeido];
+                while (digitalRead(pisoElegido)) {   // baja A1 al piso llamado
+                    analogWrite(motorCabinaA1, velocidadCabina);
+                }
+                analogWrite(motorCabinaA1, 0);  // Detiene la cabina
+                abrirPuertasA1(); // Abre puertas
+                digitalWrite(led, LOW); // Al terminar de mover apaga el led
+            } else {
+                subiendoA1();
+                byte pisoElegido = sensoresPisosA1[ledLeido];
+                while (digitalRead(pisoElegido)) {   // baja A1 al piso llamado
+                    analogWrite(motorCabinaA1, velocidadCabina);
+                }
+                analogWrite(motorCabinaA1, 0);  // Detiene la cabina
+                abrirPuertasA1(); // Abre puertas
+                digitalWrite(led, LOW); // Al terminar de mover apaga el led
+            }
+        }
+    }
+    for (int ledLeido = 0; ledLeido < cuentaLed; ledLeido++) { // Bucle for para leer cada led
+        byte led = ledsInternosA2[ledLeido];
+        if (digitalRead(led)) {  // Si hay led encendido
+            for (pisoA2 = 0; pisoA2 < cuentaSenPisos; pisoA2++) {
+                byte piso = sensoresPisosA2[pisoA2];    
+                if (!digitalRead(piso)) {   // Lee dónde está el ascensor
+                    break;  // Si encuentra el piso del ascensor sale del bucle for
+                }
+            }
+            cerrarPuertasA2()
+            if (ledLeido > pisoA2) {
+                bajandoA2();
+                byte pisoElegido = sensoresPisosA2[ledLeido];
+                while (digitalRead(pisoElegido)) {   // baja A2 al piso llamado
+                    analogWrite(motorCabinaA2, velocidadCabina);
+                }
+                analogWrite(motorCabinaA2, 0);  // Detiene la cabina
+                abrirPuertasA2(); // Abre puertas
+                digitalWrite(led, LOW); // Al terminar de mover apaga el led
+            } else {
+                subiendoA2();
+                byte pisoElegido = sensoresPisosA2[ledLeido];
+                while (digitalRead(pisoElegido)) {   // baja A2 al piso llamado
+                    analogWrite(motorCabinaA2, velocidadCabina);
+                }
+                analogWrite(motorCabinaA2, 0);  // Detiene la cabina
+                abrirPuertasA2(); // Abre puertas
+                digitalWrite(led, LOW); // Al terminar de mover apaga el led
+            }
+        }
+    }
+}
+
+void visualizadorA1() {
+    for (pisoActA1 = 0; pisoActA1 < cuentaSenPisos; pisoActA1++) {
+        byte piso = sensoresPisosA1[pisoActA1];    
+        if (!digitalRead(piso)) {   // Lee dónde está el ascensor
+            break;  // Si encuentra el piso del ascensor sale del bucle for
+        }
+    }
+    if (pisoActA1 = 0) {
+        digitalWrite(decoA1C, LOW); // Enciende led PB
+        digitalWrite(decoA1B, LOW);
+        digitalWrite(decoA1A, LOW);
+    }
+    if (pisoActA1 = 1) {
+        digitalWrite(decoA1C, LOW); // Enciende led P1
+        digitalWrite(decoA1B, LOW);
+        digitalWrite(decoA1A, HIGH);
+    }
+    if (pisoActA1 = 2) {
+        digitalWrite(decoA1C, LOW); // Enciende led P2
+        digitalWrite(decoA1B, HIGH);
+        digitalWrite(decoA1A, LOW);
+    }
+    if (pisoActA1 = 3) {
+        digitalWrite(decoA1C, LOW); // Enciende led P3
+        digitalWrite(decoA1B, HIGH);
+        digitalWrite(decoA1A, HIGH);
+    }
+    if (pisoActA1 = 4) {
+        digitalWrite(decoA1C, HIGH); // Enciende led P4
+        digitalWrite(decoA1B, LOW);
+        digitalWrite(decoA1A, LOW);
+    }
+    if (pisoActA1 = 5) {
+        digitalWrite(decoA1C, HIGH); // Enciende led PH
+        digitalWrite(decoA1B, LOW);
+        digitalWrite(decoA1A, HIGH);
+    }
+}
+
+void visualizadorA2() {
+    for (pisoActA2 = 0; pisoActA2 < cuentaSenPisos; pisoActA2++) {
+        byte piso = sensoresPisosA2[pisoActA2];    
+        if (!digitalRead(piso)) {   // Lee dónde está el ascensor
+            break;  // Si encuentra el piso del ascensor sale del bucle for
+        }
+    }
+    if (pisoActA2 = 0) {
+        digitalWrite(decoA2C, LOW); // Enciende led PB
+        digitalWrite(decoA2B, LOW);
+        digitalWrite(decoA2A, LOW);
+    }
+    if (pisoActA2 = 1) {
+        digitalWrite(decoA2C, LOW); // Enciende led P1
+        digitalWrite(decoA2B, LOW);
+        digitalWrite(decoA2A, HIGH);
+    }
+    if (pisoActA2 = 2) {
+        digitalWrite(decoA2C, LOW); // Enciende led P2
+        digitalWrite(decoA2B, HIGH);
+        digitalWrite(decoA2A, LOW);
+    }
+    if (pisoActA2 = 3) {
+        digitalWrite(decoA2C, LOW); // Enciende led P3
+        digitalWrite(decoA2B, HIGH);
+        digitalWrite(decoA2A, HIGH);
+    }
+    if (pisoActA2 = 4) {
+        digitalWrite(decoA2C, HIGH); // Enciende led P4
+        digitalWrite(decoA2B, LOW);
+        digitalWrite(decoA2A, LOW);
+    }
+    if (pisoActA2 = 5) {
+        digitalWrite(decoA2C, HIGH); // Enciende led PH
+        digitalWrite(decoA2B, LOW);
+        digitalWrite(decoA2A, HIGH);
+    }
 }
