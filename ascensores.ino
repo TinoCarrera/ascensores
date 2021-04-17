@@ -74,11 +74,11 @@ const int ledPBA2 = 43;
 const int botonPararA1 = 41;
 const int botonPararA2 = 40;
 // 1 interruptor para cuando sea horario pico
-const int horaPico = 20;
+const int horaBajada = 20;
 // Declarando variables
 bool inicio = true;             // al iniciar el controlador reinicio = 1
-byte velocidadPuertas = 100;    // velocidad del motor de puertas
-byte velocidadCabina = 100;     // velocidad de motor de cabina
+byte velocidadPuertas = 60;    // velocidad del motor de puertas
+byte velocidadCabina = 117;     // velocidad de motor de cabina
 int llamadoExt;                 // variable de llamado externo
 int pisoA1;                     // variable de piso A1
 int pisoA2;                     // variable de piso A2
@@ -123,7 +123,7 @@ void setup() {  // estableciendo entradas y salidas
     digitalWrite(decoEnable, HIGH);   // Se desabilita el Decodificador
     pinMode(botonPararA1, INPUT_PULLUP);
     pinMode(botonPararA2, INPUT_PULLUP);
-    pinMode(horaPico, INPUT_PULLUP);    // interruptor horario pico como entrada pullup
+    pinMode(horaBajada, INPUT_PULLUP);    // interruptor horario de bajada como entrada pullup
     for (int x = 0; x < cuentaSenPisos; x++) {  // Sensores de piso A1 como entradas pullup
         pinMode(sensoresPisosA1[x], INPUT_PULLUP);
     }
@@ -392,6 +392,7 @@ void botonExtPresionado(int col, int fila) {
 }
 
 void llamadoExterno(int ledPresionado) {
+    asignacionLlamadoExt(ledPresionado);
     byte llamadoA1 = sensoresPisosA1[llamadoExt];
     byte llamadoA2 = sensoresPisosA2[llamadoExt];
     if (!digitalRead(llamadoA1) && !digitalRead(sensorAperturaA1)) { // si el ascensor 1 está en PH abre puertas
@@ -407,161 +408,106 @@ void llamadoExterno(int ledPresionado) {
 
 void movimientoExt() {
     if ((millis() - tiempoEsperaA1) >= 5000 || (millis() - tiempoEsperaA2) >= 5000) { // Si algun ascensor está disponible
-        if (horaPico) { // Si es horario pico
-            Serial.println("Lectura de botones externos encendidos horario pico");
-            extHoraPico();
+        if (horaBajada) { // Si es horario pico
+            Serial.println("Lectura de botones externos encendidos (horario de bajada)");
+            horarioBajando();
         } else {
-            Serial.println("Lectura de botones externos encendidos horario normal");
-            extHoraNormal();
+            Serial.println("Lectura de botones externos encendidos (horario de subida)");
+            horarioSubiendo();
         }
     } else {
         Serial.println("Ambos ascensores en espera. Función llamado externo saltada");
     }
 }
 
-void extHoraPico() {
+void horarioBajando() {
     for (int ledLeido = cuentaLedExt; ledLeido >= 0; ledLeido--) { // Bucle for para leer cada led
-        asignacionLlamadoExt();
+        asignacionLlamadoExt(ledLeido);
         byte led = ledsExternos[ledLeido];
         if (digitalRead(led)) {  // Si hay led encendido
             Serial.println("Botón externo encendido");
-            if ((millis() - tiempoEsperaA1) >= 5000 && (millis() - tiempoEsperaA2) >= 5000) {    // Si ambos ascensores están disponibles 
-                for (pisoA1 = 0; pisoA1 < cuentaSenPisos; pisoA1++) {
-                    byte piso = sensoresPisosA1[pisoA1];    
-                    if (!digitalRead(piso)) {   // Lee dónde está el ascensor
-                        break;  // Si encuentra el piso del ascensor sale del bucle for
-                    }
-                }
-                for (pisoA2 = 0; pisoA2 < cuentaSenPisos; pisoA2++) {
-                    byte piso = sensoresPisosA2[pisoA2];    
-                    if (!digitalRead(piso)) {   // Lee dónde está el ascensor
-                        break;  // Si encuentra el piso del ascensor sale del bucle for
-                    }
-                }
-                int difA1 = llamadoExt - pisoA1;
-                int difA2 = llamadoExt - pisoA2;
-                if (difA1 < 0) { // Si la resta es negativo se hace positivo
-                    difA1 = difA1*-1;
-                }
-                if (difA2 < 0) { // Si la resta es negativo se hace positivo
-                    difA2 = difA2*-1;
-                }
-                if (difA1 <= difA2) {
-                    Serial.println("A1 se mueve al piso llamado");
-                    cerrarPuertasA1();
-                    mueveA1();
-                    Serial.println("Se apaga botón externo");
-                    digitalWrite(led, LOW); // Al terminar de mover apaga el led
-                } else if (difA1 > difA2) {
-                    Serial.println("A2 se mueve al piso llamado");
-                    cerrarPuertasA2();
-                    mueveA2();
-                    Serial.println("Se apaga botón externo");
-                    digitalWrite(led, LOW); // Al terminar de mover apaga el led
-                }
-            } else if ((millis() - tiempoEsperaA1) >= 5000) { // si solo A1 está disponible
-                for (pisoA1 = 0; pisoA1 < cuentaSenPisos; pisoA1++) {
-                    byte piso = sensoresPisosA1[pisoA1];    
-                    if (!digitalRead(piso)) {   // Lee dónde está el ascensor
-                        break;  // Si encuentra el piso del ascensor sale del bucle for
-                    }
-                }
-                Serial.println("A1 se mueve al piso llamado");
-                cerrarPuertasA1();
-                mueveA1();
-                Serial.println("Se apaga botón externo");
-                digitalWrite(led, LOW); // Al terminar de mover apaga el led  
-            } else if ((millis() - tiempoEsperaA1) >= 5000) {   // si solo A2 está disponible
-                for (pisoA2 = 0; pisoA2 < cuentaSenPisos; pisoA2++) {
-                    byte piso = sensoresPisosA2[pisoA2];    
-                    if (!digitalRead(piso)) {   // Lee dónde está el ascensor
-                        break;  // Si encuentra el piso del ascensor sale del bucle for
-                    }
-                }
-                Serial.println("A2 se mueve al piso llamado");
-                cerrarPuertasA2();
-                mueveA2();
-                Serial.println("Se apaga botón externo");
-                digitalWrite(led, LOW); // Al terminar de mover apaga el led
-            }
-            Serial.println("Finaliza Lectura de botones externos encendidos");
+            botonExtEncendido(led);
             break;  // Si encuentra led activo sale del bucle for
         }
     }
 }
 
-void extHoraNormal() {
+void horarioSubiendo() {
     for (int ledLeido = 0; ledLeido < cuentaLedExt; ledLeido++) { // Bucle for para leer cada led
-        asignacionLlamadoExt();
+        asignacionLlamadoExt(ledLeido);
         byte led = ledsExternos[ledLeido];
         if (digitalRead(led)) {  // Si hay led encendido
             Serial.println("Botón externo encendido");
-            if ((millis() - tiempoEsperaA1) >= 5000 && (millis() - tiempoEsperaA2) >= 5000) {    // Si ambos ascensores están disponibles 
-                for (pisoA1 = 0; pisoA1 < cuentaSenPisos; pisoA1++) {
-                    byte piso = sensoresPisosA1[pisoA1];    
-                    if (!digitalRead(piso)) {   // Lee dónde está el ascensor
-                        break;  // Si encuentra el piso del ascensor sale del bucle for
-                    }
-                }
-                for (pisoA2 = 0; pisoA2 < cuentaSenPisos; pisoA2++) {
-                    byte piso = sensoresPisosA2[pisoA2];    
-                    if (!digitalRead(piso)) {   // Lee dónde está el ascensor
-                        break;  // Si encuentra el piso del ascensor sale del bucle for
-                    }
-                }
-                int difA1 = llamadoExt - pisoA1;
-                int difA2 = llamadoExt - pisoA2;
-                if (difA1 < 0) { // Si la resta es negativo se hace positivo
-                    difA1 = difA1*-1;
-                }
-                if (difA2 < 0) { // Si la resta es negativo se hace positivo
-                    difA2 = difA2*-1;
-                }
-                if (difA1 <= difA2) {
-                    Serial.println("A1 se mueve al piso llamado");
-                    cerrarPuertasA1();
-                    mueveA1();
-                    Serial.println("Se apaga botón externo");
-                    digitalWrite(led, LOW); // Al terminar de mover apaga el led
-                } else if (difA1 > difA2) {
-                    Serial.println("A2 se mueve al piso llamado");
-                    cerrarPuertasA2();
-                    mueveA2();
-                    Serial.println("Se apaga botón externo");
-                    digitalWrite(led, LOW); // Al terminar de mover apaga el led
-                }
-            } else if ((millis() - tiempoEsperaA1) >= 5000) { // si solo A1 está disponible
-                for (pisoA1 = 0; pisoA1 < cuentaSenPisos; pisoA1++) {
-                    byte piso = sensoresPisosA1[pisoA1];    
-                    if (!digitalRead(piso)) {   // Lee dónde está el ascensor
-                        break;  // Si encuentra el piso del ascensor sale del bucle for
-                    }
-                }
-                Serial.println("A1 se mueve al piso llamado");
-                cerrarPuertasA1();
-                mueveA1();
-                Serial.println("Se apaga botón externo");
-                digitalWrite(led, LOW); // Al terminar de mover apaga el led  
-            } else if ((millis() - tiempoEsperaA1) >= 5000) {   // si solo A2 está disponible
-                for (pisoA2 = 0; pisoA2 < cuentaSenPisos; pisoA2++) {
-                    byte piso = sensoresPisosA2[pisoA2];    
-                    if (!digitalRead(piso)) {   // Lee dónde está el ascensor
-                        break;  // Si encuentra el piso del ascensor sale del bucle for
-                    }
-                }
-                Serial.println("A2 se mueve al piso llamado");
-                cerrarPuertasA2();
-                mueveA2();
-                Serial.println("Se apaga botón externo");
-                digitalWrite(led, LOW); // Al terminar de mover apaga el led
-            }
-            Serial.println("Finaliza Lectura de botones externos encendidos");
+            botonExtEncendido(led);
             break;  // Si encuentra led activo sale del bucle for
         }
     }
 }
 
-void asignacionLlamadoExt() {
+void botonExtEncendido(int led) {
+    if ((millis() - tiempoEsperaA1) >= 5000 && (millis() - tiempoEsperaA2) >= 5000) {    // Si ambos ascensores están disponibles 
+        for (pisoA1 = 0; pisoA1 < cuentaSenPisos; pisoA1++) {
+            byte piso = sensoresPisosA1[pisoA1];    
+            if (!digitalRead(piso)) {   // Lee dónde está el ascensor
+                break;  // Si encuentra el piso del ascensor sale del bucle for
+            }
+        }
+        for (pisoA2 = 0; pisoA2 < cuentaSenPisos; pisoA2++) {
+            byte piso = sensoresPisosA2[pisoA2];    
+            if (!digitalRead(piso)) {   // Lee dónde está el ascensor
+                break;  // Si encuentra el piso del ascensor sale del bucle for
+            }
+        }
+        int difA1 = llamadoExt - pisoA1;
+        int difA2 = llamadoExt - pisoA2;
+        if (difA1 < 0) { // Si la resta es negativo se hace positivo
+            difA1 = difA1*-1;
+        }
+        if (difA2 < 0) { // Si la resta es negativo se hace positivo
+            difA2 = difA2*-1;
+        }
+        if (difA1 <= difA2) {
+            Serial.println("A1 se mueve al piso llamado");
+            cerrarPuertasA1();
+            mueveA1();
+            Serial.println("Se apaga botón externo");
+            digitalWrite(led, LOW); // Al terminar de mover apaga el led
+        } else if (difA1 > difA2) {
+            Serial.println("A2 se mueve al piso llamado");
+            cerrarPuertasA2();
+            mueveA2();
+            Serial.println("Se apaga botón externo");
+            digitalWrite(led, LOW); // Al terminar de mover apaga el led
+        }
+    } else if ((millis() - tiempoEsperaA1) >= 5000) { // si solo A1 está disponible
+        for (pisoA1 = 0; pisoA1 < cuentaSenPisos; pisoA1++) {
+            byte piso = sensoresPisosA1[pisoA1];    
+            if (!digitalRead(piso)) {   // Lee dónde está el ascensor
+                break;  // Si encuentra el piso del ascensor sale del bucle for
+            }
+        }
+        Serial.println("A1 se mueve al piso llamado");
+        cerrarPuertasA1();
+        mueveA1();
+        Serial.println("Se apaga botón externo");
+        digitalWrite(led, LOW); // Al terminar de mover apaga el led  
+    } else if ((millis() - tiempoEsperaA1) >= 5000) {   // si solo A2 está disponible
+        for (pisoA2 = 0; pisoA2 < cuentaSenPisos; pisoA2++) {
+            byte piso = sensoresPisosA2[pisoA2];    
+            if (!digitalRead(piso)) {   // Lee dónde está el ascensor
+                break;  // Si encuentra el piso del ascensor sale del bucle for
+            }
+        }
+        Serial.println("A2 se mueve al piso llamado");
+        cerrarPuertasA2();
+        mueveA2();
+        Serial.println("Se apaga botón externo");
+        digitalWrite(led, LOW); // Al terminar de mover apaga el led
+    }
+    Serial.println("Finaliza Lectura de botones externos encendidos");
+}
+
+void asignacionLlamadoExt(int ledLeido) {
     if (ledLeido == 0) {
         llamadoExt = 0;
     }
@@ -589,9 +535,9 @@ void mueveA1() {
         byte llamadoA1 = sensoresPisosA1[llamadoExt];
         while (digitalRead(llamadoA1)) {   // sube A1 al piso llamado
             analogWrite(motorCabinaA1, velocidadCabina);
+            visualizadorA1();
             botonesExternos();
             botonesInternos();
-            visualizadorA1();
         }
         Serial.println("A1 llegó al piso llamado");
         analogWrite(motorCabinaA1, 0);  // Detiene la cabina
@@ -603,9 +549,9 @@ void mueveA1() {
         byte llamadoA1 = sensoresPisosA1[llamadoExt];
         while (digitalRead(llamadoA1)) {   // baja A1 al piso llamado
             analogWrite(motorCabinaA1, velocidadCabina);
+            visualizadorA1();
             botonesExternos();
             botonesInternos();
-            visualizadorA1();
         }
         Serial.println("A1 llegó al piso llamado");
         analogWrite(motorCabinaA1, 0);  // Detiene la cabina
@@ -621,9 +567,9 @@ void mueveA2() {
         byte llamadoA2 = sensoresPisosA2[llamadoExt];
         while (digitalRead(llamadoA2)) {   // sube A2 al piso llamado
             analogWrite(motorCabinaA2, velocidadCabina);
+            visualizadorA2();
             botonesExternos();
             botonesInternos();
-            visualizadorA2();
         }
         Serial.println("A2 llegó al piso llamado");
         analogWrite(motorCabinaA2, 0);  // Detiene la cabina
@@ -635,9 +581,9 @@ void mueveA2() {
         byte llamadoA2 = sensoresPisosA2[llamadoExt];
         while (digitalRead(llamadoA2)) {   // baja A2 al piso llamado
             analogWrite(motorCabinaA2, velocidadCabina);
+            visualizadorA2();
             botonesExternos();
             botonesInternos();
-            visualizadorA2();
         }
         Serial.println("A2 llegó al piso llamado");
         analogWrite(motorCabinaA2, 0);  // Detiene la cabina
@@ -750,72 +696,42 @@ void llamadoInternoA2(int ledPresionado) {
 
 void movimientoInt() {
     if ((millis() - tiempoEsperaA1) >= 5000) {     // Si A1 está disponible
-        if (horaPico) {
-            Serial.println("Lectura de botones internos encendidos de A1 (horario pico)");
-            intA1HoraPico();
-        } else {
-            Serial.println("Lectura de botones internos encendidos de A1 (horario normal)");
-            intA1HoraNormal();
-        }
+        Serial.println("Lectura de botones internos encendidos de A1");
+        movimientoIntA1();
     } else {
         Serial.println("El ascensor A1 está en espera. Función llamado interno A1 saltada");
     }
     if ((millis() - tiempoEsperaA2) >= 5000) {     // Si A2 está disponible
-        if (horaPico) {
-            Serial.println("Lectura de botones internos encendidos de A2 (horario pico)");
-            intA2HoraPico();
-        } else {
-            Serial.println("Lectura de botones internos encendidos de A2 (horario normal)");
-            intA2HoraNormal();
-        }
+        Serial.println("Lectura de botones internos encendidos de A2");
+        movimientoIntA2();
     } else {
         Serial.println("El ascensor A2 está en espera. Función llamado interno A2 saltada");
     }
 }
 
-void intA1HoraPico() {
-    for (int ledLeido = cuentaLed; ledLeido >= 0; ledLeido--) { // Bucle for para leer primero botones de pisos superiores
+void movimientoIntA1() {
+    for (int ledLeido = 0; ledLeido < cuentaLed; ledLeido++) { // Bucle for para leer botones internos de A1
         byte led = ledsInternosA1[ledLeido];
         if (digitalRead(led)) {  // Si hay led encendido
             Serial.println("Botón interno de A1 encendido");
-            movimientoA1(ledLeido, led);
+            botonIntA1Encendido(ledLeido, led);
+            break;  // luego de atender un llamado interno de A1 sale de la lectura
         }
     }
 }
 
-void intA1HoraNormal() {
-    for (int ledLeido = 0; ledLeido < cuentaLed; ledLeido++) { // Bucle for para leer primero botones de pisos inferiores
-        byte led = ledsInternosA1[ledLeido];
-        if (digitalRead(led)) {  // Si hay led encendido
-            Serial.println("Botón interno de A1 encendido");
-            movimientoA1(ledLeido, led);
-        }
-    }
-}
-
-
-
-void intA2HoraPico() {
-    for (int ledLeido = cuentaLed; ledLeido >= 0; ledLeido--) { // Bucle for para leer primero botones de pisos superiores
+void movimientoIntA2() {
+    for (int ledLeido = 0; ledLeido < cuentaLed; ledLeido++) { // Bucle for para leer botones internos de A2
         byte led = ledsInternosA2[ledLeido];
         if (digitalRead(led)) {  // Si hay led encendido
             Serial.println("Botón interno de A2 encendido");
-            movimientoA2(ledLeido, led);
+            botonIntA2Encendido(ledLeido, led);
+            break;  // luego de atender un llamado interno de A1 sale de la lectura
         }
     }
 }
 
-void intA2HoraNormal() {
-    for (int ledLeido = 0; ledLeido < cuentaLed; ledLeido++) { // Bucle for para leer primero botones de pisos inferiores
-        byte led = ledsInternosA2[ledLeido];
-        if (digitalRead(led)) {  // Si hay led encendido
-            Serial.println("Botón interno de A2 encendido");
-            movimientoA2(ledLeido, led);
-        }
-    }
-}
-
-void movimientoA1(int ledLeido, int led) {
+void botonIntA1Encendido(int ledLeido, int led) {
     for (pisoA1 = 0; pisoA1 < cuentaSenPisos; pisoA1++) {
         byte piso = sensoresPisosA1[pisoA1];    
         if (!digitalRead(piso)) {   // Lee dónde está el ascensor
@@ -823,21 +739,27 @@ void movimientoA1(int ledLeido, int led) {
         }
     }
     cerrarPuertasA1();
-    if (ledLeido > pisoA1) {
+    if (ledLeido < pisoA1) {
         Serial.println("A1 baja al piso del botón interno presionado");
         bajandoA1();
         byte pisoElegido = sensoresPisosA1[ledLeido];
         while (digitalRead(pisoElegido)) {   // baja A1 al piso llamado
             analogWrite(motorCabinaA1, velocidadCabina);
+            visualizadorA1();
             botonesExternos();
             botonesInternos();
-            visualizadorA1();
+            byte piso = sensoresPisosA1[pisoActA1];
+            byte led = ledsInternosA1[pisoActA1];
+            if (digitalRead(piso) && digitalRead(led)) {
+                break;
+            }
         }
         Serial.println("A1 llegó al piso del botón interno presionado");
         analogWrite(motorCabinaA1, 0);  // Detiene la cabina
         visualizadorA1();
         abrirPuertasA1(); // Abre puertas
         Serial.println("Apaga botón interno de A1");
+        byte led = ledsInternosA1[pisoActA1];
         digitalWrite(led, LOW); // Al terminar de mover apaga el led
     } else {
         Serial.println("A1 sube al piso del botón interno presionado");
@@ -845,22 +767,27 @@ void movimientoA1(int ledLeido, int led) {
         byte pisoElegido = sensoresPisosA1[ledLeido];
         while (digitalRead(pisoElegido)) {   // baja A1 al piso llamado
             analogWrite(motorCabinaA1, velocidadCabina);
+            visualizadorA1();
             botonesExternos();
             botonesInternos();
-            visualizadorA1();
+            byte piso = sensoresPisosA1[pisoActA1];
+            byte led = ledsInternosA1[pisoActA1];
+            if (digitalRead(piso) && digitalRead(led)) {
+                break;
+            }
         }
         Serial.println("A1 llegó al piso del botón interno presionado");
         analogWrite(motorCabinaA1, 0);  // Detiene la cabina
         visualizadorA1();
         abrirPuertasA1(); // Abre puertas
         Serial.println("Apaga botón interno de A1");
+        byte led = ledsInternosA1[pisoActA1];
         digitalWrite(led, LOW); // Al terminar de mover apaga el led
     }
     Serial.println("Finaliza la lectura de botones internos encendidos de A1");
-    break; // luego de atender un llamado interno de A1 sale de la lectura
 }
 
-void movimientoA2(int ledLeido, int led) {
+void botonIntA2Encendido(int ledLeido, int led) {
     for (pisoA2 = 0; pisoA2 < cuentaSenPisos; pisoA2++) {
         byte piso = sensoresPisosA2[pisoA2];    
         if (!digitalRead(piso)) {   // Lee dónde está el ascensor
@@ -868,21 +795,27 @@ void movimientoA2(int ledLeido, int led) {
         }
     }
     cerrarPuertasA2();
-    if (ledLeido > pisoA2) {
+    if (ledLeido < pisoA2) {
         Serial.println("A2 baja al piso del botón interno presionado");
         bajandoA2();
         byte pisoElegido = sensoresPisosA2[ledLeido];
         while (digitalRead(pisoElegido)) {   // baja A2 al piso llamado
             analogWrite(motorCabinaA2, velocidadCabina);
+            visualizadorA2();
             botonesExternos();
             botonesInternos();
-            visualizadorA2();
+            byte piso = sensoresPisosA2[pisoActA2];
+            byte led = ledsInternosA2[pisoActA2];
+            if (digitalRead(piso) && digitalRead(led)) {
+                break;
+            }
         }
         Serial.println("A2 llegó al piso del botón interno presionado");
         analogWrite(motorCabinaA2, 0);  // Detiene la cabina
         visualizadorA2();
         abrirPuertasA2(); // Abre puertas
         Serial.println("Apaga botón interno de A2");
+        byte led = ledsInternosA2[pisoActA2];
         digitalWrite(led, LOW); // Al terminar de mover apaga el led
     } else {
         Serial.println("A2 sube al piso del botón interno presionado");
@@ -890,23 +823,27 @@ void movimientoA2(int ledLeido, int led) {
         byte pisoElegido = sensoresPisosA2[ledLeido];
         while (digitalRead(pisoElegido)) {   // baja A2 al piso llamado
             analogWrite(motorCabinaA2, velocidadCabina);
+            visualizadorA2();
             botonesExternos();
             botonesInternos();
-            visualizadorA2();
+            byte piso = sensoresPisosA2[pisoActA2];
+            byte led = ledsInternosA2[pisoActA2];
+            if (digitalRead(piso) && digitalRead(led)) {
+                break;
+            }
         }
         Serial.println("A2 llegó al piso del botón interno presionado");
         analogWrite(motorCabinaA2, 0);  // Detiene la cabina
         visualizadorA2();
         abrirPuertasA2(); // Abre puertas
         Serial.println("Apaga botón interno de A2");
+        byte led = ledsInternosA2[pisoActA2];
         digitalWrite(led, LOW); // Al terminar de mover apaga el led
     }
     Serial.println("Finaliza la lectura de botones internos encendidos de A2");
-    break; // luego de atender un llamado interno de A2 sale de la lectura
 }
 
 void visualizadorA1() {
-    Serial.println("Lectura de sensores A1");
     for (pisoActA1 = 0; pisoActA1 < cuentaSenPisos; pisoActA1++) {
         byte piso = sensoresPisosA1[pisoActA1];    
         if (!digitalRead(piso)) {   // Lee dónde está el ascensor
@@ -952,7 +889,6 @@ void visualizadorA1() {
 }
 
 void visualizadorA2() {
-    Serial.println("Lectura de sensores A2");
     for (pisoActA2 = 0; pisoActA2 < cuentaSenPisos; pisoActA2++) {
         byte piso = sensoresPisosA2[pisoActA2];    
         if (!digitalRead(piso)) {   // Lee dónde está el ascensor
